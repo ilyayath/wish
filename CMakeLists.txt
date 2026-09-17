@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(wish C)
+
+set(CMAKE_C_STANDARD 11)
+add_compile_options(-Wall -Werror -g)
+
+add_executable(wish wish.c
+        wish.c)
