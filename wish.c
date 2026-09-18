@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define MAX_ARGS 128
 
 int main(void)
 {
@@ -14,12 +17,26 @@ int main(void)
             break;
         }
 
-        printf("ти ввів: %s", line);
+        char *args[MAX_ARGS];
+        int args_count = 0;
 
-        free(line);
-        return 0;
+        char *rest = line;
+        char *token;
+
+        while ((token = strsep(&rest, " \t\n")) != NULL) {
+            if (strcmp(token, "") == 0) {
+                continue;   // між двома пробілами strsep дає порожній токен
+            }
+            args[args_count] = token;
+            args_count++;
+        }
+        args[args_count] = NULL;   // execv вимагає NULL в кінці
+
+        for (int i = 0; i < args_count; i++) {
+            printf("[%d] = %s\n", i, args[i]);
+        }
     }
 
-    printf("hello\n");
+    free(line);
     return 0;
 }
