@@ -28,8 +28,23 @@ char *find_program(char *command)
     return NULL;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    FILE *input = stdin;
+    int interactive = 1;
+
+    if (argc == 2) {
+        input = fopen(argv[1], "r");
+        if (input == NULL) {
+            printf("не вдалось відкрити файл\n");
+            exit(1);
+        }
+        interactive = 0;
+    } else if (argc > 2) {
+        printf("забагато аргументів\n");
+        exit(1);
+    }
+
     char *line = NULL;
     size_t line_size = 0;
 
@@ -37,10 +52,12 @@ int main(void)
     shell_path_size = 1;
 
     while (1) {
-        printf("wish> ");
-        fflush(stdout);
+        if (interactive) {
+            printf("wish> ");
+            fflush(stdout);
+        }
 
-        if (getline(&line, &line_size, stdin) == -1) {
+        if (getline(&line, &line_size, input) == -1) {
             break;
         }
 
@@ -82,6 +99,19 @@ int main(void)
             continue;
         }
 
+        if (strcmp(args[0], "path") == 0) {
+            for (int i = 0; i < shell_path_size; i++) {
+                free(shell_path[i]);
+            }
+            shell_path_size = 0;
+
+            for (int i = 1; i < args_count; i++) {
+                shell_path[shell_path_size] = strdup(args[i]);
+                shell_path_size++;
+            }
+            continue;
+        }
+
         char *program = find_program(args[0]);
         if (program == NULL) {
             printf("команду не знайдено\n");
@@ -104,5 +134,8 @@ int main(void)
     }
 
     free(line);
+    if (!interactive) {
+        fclose(input);
+    }
     return 0;
 }
