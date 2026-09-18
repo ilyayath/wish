@@ -6,6 +6,13 @@
 
 #define MAX_ARGS 128
 
+char error_message[30] = "An error has occurred\n";
+
+void print_error(void)
+{
+    write(STDERR_FILENO, error_message, strlen(error_message));
+}
+
 char *shell_path[MAX_ARGS];
 int shell_path_size = 0;
 
@@ -36,12 +43,12 @@ int main(int argc, char *argv[])
     if (argc == 2) {
         input = fopen(argv[1], "r");
         if (input == NULL) {
-            printf("не вдалось відкрити файл\n");
+            print_error();
             exit(1);
         }
         interactive = 0;
     } else if (argc > 2) {
-        printf("забагато аргументів\n");
+        print_error();
         exit(1);
     }
 
@@ -82,7 +89,7 @@ int main(int argc, char *argv[])
 
         if (strcmp(args[0], "exit") == 0) {
             if (args_count != 1) {
-                printf("exit не приймає аргументів\n");
+                print_error();
                 continue;
             }
             exit(0);
@@ -90,11 +97,11 @@ int main(int argc, char *argv[])
 
         if (strcmp(args[0], "cd") == 0) {
             if (args_count != 2) {
-                printf("cd приймає рівно один аргумент\n");
+                print_error();
                 continue;
             }
             if (chdir(args[1]) != 0) {
-                printf("немає такого каталогу\n");
+                print_error();
             }
             continue;
         }
@@ -114,18 +121,18 @@ int main(int argc, char *argv[])
 
         char *program = find_program(args[0]);
         if (program == NULL) {
-            printf("команду не знайдено\n");
+            print_error();
             continue;
         }
 
         int pid = fork();
 
         if (pid < 0) {
-            printf("fork не вдався\n");
+            print_error();
         } else if (pid == 0) {
             execv(program, args);
             // сюди потрапляємо тільки якщо execv не спрацював
-            printf("execv не вдався\n");
+            print_error(); 
             exit(1);
         } else {
             waitpid(pid, NULL, 0);
