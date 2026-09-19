@@ -110,6 +110,25 @@ int run_program(char **args, char *out_file)
     return pid;
 }
 
+char *add_spaces(char *line)
+{
+    int len = strlen(line);
+    char *result = malloc(3 * len + 1);
+    int j = 0;
+
+    for (int i = 0; i < len; i++) {
+        if (line[i] == '>' || line[i] == '&') {
+            result[j++] = ' ';
+            result[j++] = line[i];
+            result[j++] = ' ';
+        } else {
+            result[j++] = line[i];
+        }
+    }
+    result[j] = '\0';
+    return result;
+}
+
 int main(int argc, char *argv[])
 {
     FILE *input = stdin;
@@ -143,10 +162,12 @@ int main(int argc, char *argv[])
             break;
         }
 
+        char *spaced = add_spaces(line);
+
         int pids[MAX_ARGS];
         int pids_count = 0;
 
-        char *cmd_rest = line;
+        char *cmd_rest = spaced;
         char *command;
 
         while ((command = strsep(&cmd_rest, "&")) != NULL) {
@@ -212,6 +233,8 @@ int main(int argc, char *argv[])
         for (int i = 0; i < pids_count; i++) {
             waitpid(pids[i], NULL, 0);
         }
+
+        free(spaced);
     }
 
     free(line);
