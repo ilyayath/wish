@@ -36,6 +36,80 @@ char *find_program(char *command)
     return NULL;
 }
 
+int run_builtin(char **args, int args_count)
+{
+    if (strcmp(args[0], "exit") == 0) {
+        if (args_count != 1) {
+            print_error();
+            return 1;
+        }
+        exit(0);
+    }
+
+    if (strcmp(args[0], "cd") == 0) {
+        if (args_count != 2) {
+            print_error();
+            return 1;
+        }
+        if (chdir(args[1]) != 0) {
+            print_error();
+        }
+        return 1;
+    }
+
+    if (strcmp(args[0], "path") == 0) {
+        for (int i = 0; i < shell_path_size; i++) {
+            free(shell_path[i]);
+        }
+        shell_path_size = 0;
+
+        for (int i = 1; i < args_count; i++) {
+            shell_path[shell_path_size] = strdup(args[i]);
+            shell_path_size++;
+        }
+        return 1;
+    }
+
+    return 0;   // це не вбудована команда
+}
+
+int run_program(char **args, char *out_file)
+{
+    char *program = find_program(args[0]);
+    if (program == NULL) {
+        print_error();
+        return -1;
+    }
+
+    int pid = fork();
+
+    if (pid < 0) {
+        print_error();
+        free(program);
+        return -1;
+    }
+
+    if (pid == 0) {
+        if (out_file != NULL) {
+            int fd = open(out_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+            if (fd < 0) {
+                print_error();
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+        }
+        execv(program, args);
+        // сюди потрапляємо тільки якщо execv не спрацював
+        print_error();
+        exit(1);
+    }
+
+    free(program);
+    return pid;
+}
+
 int main(int argc, char *argv[])
 {
     FILE *input = stdin;
@@ -69,113 +143,74 @@ int main(int argc, char *argv[])
             break;
         }
 
-        char *args[MAX_ARGS];
-        int args_count = 0;
-        char *out_file = NULL;
-        int have_redirect = 0;
-        int bad_syntax = 0;
+        int pids[MAX_ARGS];
+        int pids_count = 0;
 
-        char *rest = line;
-        char *token;
+        char *cmd_rest = line;
+        char *command;
 
-        while ((token = strsep(&rest, " \t\n")) != NULL) {
-            if (strcmp(token, "") == 0) {
-                continue;   // strsep дає порожні токени
-            }
+        while ((command = strsep(&cmd_rest, "&")) != NULL) {
+            char *args[MAX_ARGS];
+            int args_count = 0;
+            char *out_file = NULL;
+            int have_redirect = 0;
+            int bad_syntax = 0;
 
-            if (strcmp(token, ">") == 0) {
+            char *rest = command;
+            char *token;
+
+            while ((token = strsep(&rest, " \t\n")) != NULL) {
+                if (strcmp(token, "") == 0) {
+                    continue;   // strsep дає порожні токени
+                }
+
+                if (strcmp(token, ">") == 0) {
+                    if (have_redirect) {
+                        bad_syntax = 1;
+                    }
+                    have_redirect = 1;
+                    continue;
+                }
+
                 if (have_redirect) {
-                    bad_syntax = 1;
+                    if (out_file != NULL) {
+                        bad_syntax = 1;
+                    }
+                    out_file = token;
+                } else {
+                    args[args_count] = token;
+                    args_count++;
                 }
-                have_redirect = 1;
-                continue;
+            }
+            args[args_count] = NULL;   // execv вимагає NULL в кінці
+
+            if (have_redirect && (out_file == NULL || args_count == 0)) {
+                bad_syntax = 1;
             }
 
-            if (have_redirect) {
-                if (out_file != NULL) {
-                    bad_syntax = 1;
-                }
-                out_file = token;
-            } else {
-                args[args_count] = token;
-                args_count++;
-            }
-        }
-        args[args_count] = NULL;   // execv вимагає NULL в кінці
-
-        if (have_redirect && (out_file == NULL || args_count == 0)) {
-            bad_syntax = 1;
-        }
-
-        if (bad_syntax) {
-            print_error();
-            continue;
-        }
-
-        if (args_count == 0) {
-            continue;
-        }
-
-        if (strcmp(args[0], "exit") == 0) {
-            if (args_count != 1) {
+            if (bad_syntax) {
                 print_error();
                 continue;
             }
-            exit(0);
-        }
 
-        if (strcmp(args[0], "cd") == 0) {
-            if (args_count != 2) {
-                print_error();
+            if (args_count == 0) {
                 continue;
             }
-            if (chdir(args[1]) != 0) {
-                print_error();
+
+            if (run_builtin(args, args_count)) {
+                continue;
             }
-            continue;
+
+            int pid = run_program(args, out_file);
+            if (pid > 0) {
+                pids[pids_count] = pid;
+                pids_count++;
+            }
         }
 
-        if (strcmp(args[0], "path") == 0) {
-            for (int i = 0; i < shell_path_size; i++) {
-                free(shell_path[i]);
-            }
-            shell_path_size = 0;
-
-            for (int i = 1; i < args_count; i++) {
-                shell_path[shell_path_size] = strdup(args[i]);
-                shell_path_size++;
-            }
-            continue;
-        }
-
-        char *program = find_program(args[0]);
-        if (program == NULL) {
-            print_error();
-            continue;
-        }
-
-        int pid = fork();
-
-        if (pid < 0) {
-            print_error();
-        } else if (pid == 0) {
-            if (out_file != NULL) {
-                int fd = open(out_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-                if (fd < 0) {
-                    print_error();
-                    exit(1);
-                }
-                dup2(fd, STDOUT_FILENO);
-                dup2(fd, STDERR_FILENO);
-                close(fd);
-            }
-            execv(program, args);
-            // сюди потрапляємо тільки якщо execv не спрацював
-            print_error();
-            exit(1);
-        } else {
-            waitpid(pid, NULL, 0);
-            free(program);
+        // спочатку запустили всі команди, і тільки тепер чекаємо кожну
+        for (int i = 0; i < pids_count; i++) {
+            waitpid(pids[i], NULL, 0);
         }
     }
 
