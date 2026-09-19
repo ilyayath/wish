@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 
 #define MAX_ARGS 128
@@ -70,6 +71,9 @@ int main(int argc, char *argv[])
 
         char *args[MAX_ARGS];
         int args_count = 0;
+        char *out_file = NULL;
+        int have_redirect = 0;
+        int bad_syntax = 0;
 
         char *rest = line;
         char *token;
@@ -78,10 +82,35 @@ int main(int argc, char *argv[])
             if (strcmp(token, "") == 0) {
                 continue;   // strsep дає порожні токени
             }
-            args[args_count] = token;
-            args_count++;
+
+            if (strcmp(token, ">") == 0) {
+                if (have_redirect) {
+                    bad_syntax = 1;
+                }
+                have_redirect = 1;
+                continue;
+            }
+
+            if (have_redirect) {
+                if (out_file != NULL) {
+                    bad_syntax = 1;
+                }
+                out_file = token;
+            } else {
+                args[args_count] = token;
+                args_count++;
+            }
         }
         args[args_count] = NULL;   // execv вимагає NULL в кінці
+
+        if (have_redirect && (out_file == NULL || args_count == 0)) {
+            bad_syntax = 1;
+        }
+
+        if (bad_syntax) {
+            print_error();
+            continue;
+        }
 
         if (args_count == 0) {
             continue;
@@ -130,9 +159,19 @@ int main(int argc, char *argv[])
         if (pid < 0) {
             print_error();
         } else if (pid == 0) {
+            if (out_file != NULL) {
+                int fd = open(out_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                if (fd < 0) {
+                    print_error();
+                    exit(1);
+                }
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+                close(fd);
+            }
             execv(program, args);
             // сюди потрапляємо тільки якщо execv не спрацював
-            print_error(); 
+            print_error();
             exit(1);
         } else {
             waitpid(pid, NULL, 0);
